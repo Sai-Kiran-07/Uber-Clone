@@ -15,7 +15,6 @@ const CaptainHome = () => {
 
     const [ ridePopupPanel, setRidePopupPanel ] = useState(false)
     const [ confirmRidePopupPanel, setConfirmRidePopupPanel ] = useState(false)
-
     const ridePopupPanelRef = useRef(null)
     const confirmRidePopupPanelRef = useRef(null)
     const [ ride, setRide ] = useState(null)
@@ -24,55 +23,115 @@ const CaptainHome = () => {
     const { captain } = useContext(CaptainDataContext)
 
     useEffect(() => {
+        // Try to get captain from localStorage if not available in context
+        let captainData = captain;
+        if (!captainData || !captainData._id) {
+            const storedCaptain = localStorage.getItem('captain');
+            if (storedCaptain) {
+                try {
+                    captainData = JSON.parse(storedCaptain);
+                } catch (e) {
+                    console.error("Error parsing stored captain data:", e);
+                    return; // Exit if we can't get captain data
+                }
+            } else {
+                return; // Exit if no captain data available
+            }
+        }
+        
+        console.log("Captain connected with ID:", captainData._id);
+        
         socket.emit('join', {
-            userId: captain._id,
+            userId: captainData._id,
             userType: 'captain'
-        })
+        });
+        
         const updateLocation = () => {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(position => {
-
                     socket.emit('update-location-captain', {
-                        userId: captain._id,
+                        userId: captainData._id,
                         location: {
                             ltd: position.coords.latitude,
                             lng: position.coords.longitude
                         }
-                    })
-                })
+                    });
+                }, (error) => {
+                    console.error("Geolocation error:", error);
+                });
+            }
+        };
+
+        const locationInterval = setInterval(updateLocation, 10000);
+        updateLocation();
+
+        // Add socket event listener inside useEffect
+        const handleNewRide = (data) => {
+            console.log("New ride received:", data);
+            setRide(data);
+            setRidePopupPanel(true);
+        };
+        
+        socket.on('new-ride', handleNewRide);
+
+        // Clean up function
+        return () => {
+            clearInterval(locationInterval);
+            socket.off('new-ride', handleNewRide);
+        };
+    }, [captain, socket])
+
+    async function confirmRide() {
+        if (!ride || !ride._id) {
+            console.error("Missing ride data:", { ride });
+            alert("Ride information is missing. Please refresh the page.");
+            return;
+        }
+
+        // Get captain from localStorage as backup if context is not available
+        let captainData = captain;
+        if (!captainData || !captainData._id) {
+            const storedCaptain = localStorage.getItem('captain');
+            if (storedCaptain) {
+                try {
+                    captainData = JSON.parse(storedCaptain);
+                } catch (e) {
+                    console.error("Error parsing stored captain data:", e);
+                }
             }
         }
 
-        const locationInterval = setInterval(updateLocation, 10000)
-        updateLocation()
+        if (!captainData || !captainData._id) {
+            console.error("Missing captain data");
+            alert("Captain information is missing. Please log in again.");
+            return;
+        }
 
-        // return () => clearInterval(locationInterval)
-    }, [])
+        try {
+            console.log("Confirming ride with ID:", ride._id);
+            console.log("Captain ID:", captainData._id);
+            
+            const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/rides/confirm`, {
+                rideId: ride._id
+            }, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                }
+            });
 
-    socket.on('new-ride', (data) => {
-
-        setRide(data)
-        setRidePopupPanel(true)
-
-    })
-
-    async function confirmRide() {
-
-        const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/rides/confirm`, {
-
-            rideId: ride._id,
-            captainId: captain._id,
-
-
-        }, {
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`
-            }
-        })
-
-        setRidePopupPanel(false)
-        setConfirmRidePopupPanel(true)
-
+            console.log("Ride confirmed successfully:", response.data);
+            // First hide the ride popup panel
+            setRidePopupPanel(false);
+            
+            // Then show the confirm ride popup panel after a short delay
+            setTimeout(() => {
+                setConfirmRidePopupPanel(true);
+                console.log("Setting confirmRidePopupPanel to true");
+            }, 100);
+        } catch (error) {
+            console.error("Error confirming ride:", error?.response?.data || error);
+            alert("Failed to confirm ride: " + (error?.response?.data?.message || "Please try again."));
+        }
     }
 
 
@@ -88,17 +147,7 @@ const CaptainHome = () => {
         }
     }, [ ridePopupPanel ])
 
-    useGSAP(function () {
-        if (confirmRidePopupPanel) {
-            gsap.to(confirmRidePopupPanelRef.current, {
-                transform: 'translateY(0)'
-            })
-        } else {
-            gsap.to(confirmRidePopupPanelRef.current, {
-                transform: 'translateY(100%)'
-            })
-        }
-    }, [ confirmRidePopupPanel ])
+    // We're now using conditional rendering for the confirmRidePopupPanel, so this animation is no longer needed
 
     return (
         <div className='h-screen'>
@@ -123,11 +172,14 @@ const CaptainHome = () => {
                     confirmRide={confirmRide}
                 />
             </div>
-            <div ref={confirmRidePopupPanelRef} className='fixed w-full h-screen z-10 bottom-0 translate-y-full bg-white px-3 py-10 pt-12'>
-                <ConfirmRidePopUp
-                    ride={ride}
-                    setConfirmRidePopupPanel={setConfirmRidePopupPanel} setRidePopupPanel={setRidePopupPanel} />
-            </div>
+            {confirmRidePopupPanel && (
+                <div ref={confirmRidePopupPanelRef} className='fixed w-full h-screen z-20 bottom-0 bg-white px-3 py-10 pt-12'>
+                    <ConfirmRidePopUp
+                        ride={ride}
+                        setConfirmRidePopupPanel={setConfirmRidePopupPanel} 
+                        setRidePopupPanel={setRidePopupPanel} />
+                </div>
+            )}
         </div>
     )
 }

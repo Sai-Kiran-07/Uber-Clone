@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios';
-import { UserDataContext } from '../context/userContext';
+import { UserDataContext } from '../context/UserContext';
+
 
 const UserLogin = () => {
   const [email, setEmail] = useState('');
@@ -11,24 +12,31 @@ const UserLogin = () => {
   const {user, setUser} = React.useContext(UserDataContext);
   const navigate = useNavigate();
 
+  const [error, setError] = useState('');
+  
   const submitHandler = async (e) => {
     e.preventDefault();
-    const user = {
-      email: email,
-      password: password
-    };
+    setError('');
+    
+    try {
+      const userData = {
+        email: email,
+        password: password
+      };
 
-    const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/users/login`, user);
-
-    if(response.status === 201) {
+      const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/users/login`, userData);
+      
       const data = response.data;
       setUser(data.user);
       localStorage.setItem('token', data.token);
       navigate('/home');
+      
+      setEmail('');
+      setPassword('');
+    } catch (err) {
+      console.error("Login error:", err);
+      setError(err.response?.data?.message || 'Invalid email or password');
     }
-
-    setEmail('');
-    setPassword('');
   }
 
   return (
@@ -37,6 +45,7 @@ const UserLogin = () => {
         <img className="w-16 mb-10"src='https://upload.wikimedia.org/wikipedia/commons/thumb/5/58/Uber_logo_2018.svg/2560px-Uber_logo_2018.svg.png'/>
 
       <form onSubmit={(e) => submitHandler(e)}>
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 mb-4 rounded">{error}</div>}
 
         <h3 className='text-lg font-medium mb-2'>What's your email</h3>
         <input 

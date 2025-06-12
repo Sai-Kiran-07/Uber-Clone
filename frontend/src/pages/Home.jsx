@@ -15,6 +15,23 @@ import { useNavigate } from 'react-router-dom';
 import LiveTracking from '../components/LiveTracking';
 
 const Home = () => {
+    // For testing - uncomment to simulate a ride confirmation
+    // setTimeout(() => {
+    //     console.log("Simulating ride confirmation");
+    //     const testRide = {
+    //         _id: "test123",
+    //         pickup: "Test Pickup",
+    //         destination: "Test Destination",
+    //         fare: 150,
+    //         otp: "123456",
+    //         captain: {
+    //             fullname: { firstname: "Test Captain" },
+    //             vehicle: { plate: "AB1234" }
+    //         }
+    //     };
+    //     setRide(testRide);
+    //     setWaitingForDriver(true);
+    // }, 5000);
     const [ pickup, setPickup ] = useState('')
     const [ destination, setDestination ] = useState('')
     const [ panelOpen, setPanelOpen ] = useState(false)
@@ -41,22 +58,52 @@ const Home = () => {
     const { user } = useContext(UserDataContext)
 
     useEffect(() => {
-        socket.emit("join", { userType: "user", userId: user._id })
-    }, [ user ])
-
-    socket.on('ride-confirmed', ride => {
-
-
-        setVehicleFound(false)
-        setWaitingForDriver(true)
-        setRide(ride)
-    })
-
-    socket.on('ride-started', ride => {
-        console.log("ride")
-        setWaitingForDriver(false)
-        navigate('/riding', { state: { ride } }) // Updated navigate to include ride data
-    })
+        if (!user || !user._id) return;
+        
+        console.log("User connected with ID:", user._id);
+        socket.emit("join", { userType: "user", userId: user._id });
+        
+        // Move socket event listeners inside useEffect to prevent multiple listeners
+        const handleRideConfirmed = (data) => {
+            console.log("Ride confirmed event received:", data);
+            
+            // Force all panels to close first
+            setVehiclePanel(false);
+            setConfirmRidePanel(false);
+            setVehicleFound(false);
+            
+            // Set the ride data and show the waiting panel immediately
+            setRide(data);
+            setWaitingForDriver(true);
+            
+            // Force UI update with an alert (temporary debugging)
+            alert("Captain confirmed your ride! Check the OTP: " + (data?.otp || "N/A"));
+        };
+        
+        const handleRideStarted = (data) => {
+            console.log("Ride started event received:", data);
+            setWaitingForDriver(false);
+            navigate('/riding', { state: { ride: data } });
+        };
+        
+        // Listen for both direct and broadcast events
+        socket.on('ride-confirmed', handleRideConfirmed);
+        socket.on('ride-confirmed-broadcast', handleRideConfirmed);
+        socket.on('ride-started', handleRideStarted);
+        
+        // Debug listener for all events
+        socket.onAny((event, ...args) => {
+            console.log(`Socket event received: ${event}`, args);
+        });
+        
+        // Clean up event listeners
+        return () => {
+            socket.off('ride-confirmed', handleRideConfirmed);
+            socket.off('ride-confirmed-broadcast', handleRideConfirmed);
+            socket.off('ride-started', handleRideStarted);
+            socket.offAny();
+        };
+    }, [user, socket, navigate])
 
 
     const handlePickupChange = async (e) => {
@@ -153,17 +200,7 @@ const Home = () => {
         }
     }, [ vehicleFound ])
 
-    useGSAP(function () {
-        if (waitingForDriver) {
-            gsap.to(waitingForDriverRef.current, {
-                transform: 'translateY(0)'
-            })
-        } else {
-            gsap.to(waitingForDriverRef.current, {
-                transform: 'translateY(100%)'
-            })
-        }
-    }, [ waitingForDriver ])
+    // We're now using conditional rendering for the waiting panel, so this animation is no longer needed
 
 
     async function findTrip() {
@@ -184,22 +221,53 @@ const Home = () => {
     }
 
     async function createRide() {
-        const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/rides/create`, {
-            pickup,
-            destination,
-            vehicleType
-        }, {
-            headers: {
-                Authorization: `Bearer ${localStorage.getItem('token')}`
-            }
-        })
-
-
+        try {
+            const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/rides/create`, {
+                pickup,
+                destination,
+                vehicleType
+            }, {
+                headers: {
+                    Authorization: `Bearer ${localStorage.getItem('token')}`
+                }
+            });
+            
+            console.log("Ride created:", response.data);
+            setVehicleFound(true);
+            
+        } catch (error) {
+            console.error("Error creating ride:", error);
+        }
     }
+
+    // For debugging
+    const showWaitingPanel = () => {
+        console.log("Manual trigger of waiting panel");
+        const testRide = {
+            _id: "test123",
+            pickup: "Test Pickup",
+            destination: "Test Destination",
+            fare: 150,
+            otp: "123456",
+            captain: {
+                fullname: { firstname: "Test Captain" },
+                vehicle: { plate: "AB1234" }
+            }
+        };
+        setRide(testRide);
+        setWaitingForDriver(true);
+    };
 
     return (
         <div className='h-screen relative overflow-hidden'>
             <img className='w-16 absolute left-5 top-5' src="https://upload.wikimedia.org/wikipedia/commons/c/cc/Uber_logo_2018.png" alt="" />
+            {/* Debug button - remove in production */}
+            <button 
+                onClick={showWaitingPanel}
+                className="absolute top-5 right-5 bg-red-500 text-white px-2 py-1 rounded text-sm"
+            >
+                Test Panel
+            </button>
             <div className='h-screen w-screen'>
                 {/* image for temporary use  */}
                 <LiveTracking />
@@ -279,13 +347,15 @@ const Home = () => {
                     vehicleType={vehicleType}
                     setVehicleFound={setVehicleFound} />
             </div>
-            <div ref={waitingForDriverRef} className='fixed w-full  z-10 bottom-0  bg-white px-3 py-6 pt-12'>
-                <WaitingForDriver
-                    ride={ride}
-                    setVehicleFound={setVehicleFound}
-                    setWaitingForDriver={setWaitingForDriver}
-                    waitingForDriver={waitingForDriver} />
-            </div>
+            {waitingForDriver && (
+                <div ref={waitingForDriverRef} className='fixed w-full z-20 bottom-0 bg-white px-3 py-6 pt-12' style={{transform: 'translateY(0)'}}>
+                    <WaitingForDriver
+                        ride={ride}
+                        setVehicleFound={setVehicleFound}
+                        setWaitingForDriver={setWaitingForDriver}
+                        waitingForDriver={waitingForDriver} />
+                </div>
+            )}
         </div>
     )
 }

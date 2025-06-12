@@ -66,7 +66,7 @@ module.exports.createRide = async ({
 
 
 
-    const ride = rideModel.create({
+    const ride = await rideModel.create({
         user,
         pickup,
         destination,
@@ -83,24 +83,42 @@ module.exports.confirmRide = async ({
     if (!rideId) {
         throw new Error('Ride id is required');
     }
-
+    
+    if (!captain || !captain._id) {
+        throw new Error('Captain information is required');
+    }
+    
+    // First check if the ride exists and is available
+    const existingRide = await rideModel.findOne({
+        _id: rideId,
+        status: 'pending' // Only confirm rides that are still pending
+    });
+    
+    if (!existingRide) {
+        throw new Error('Ride not found or already accepted');
+    }
+    
+    // Update the ride status
     await rideModel.findOneAndUpdate({
         _id: rideId
     }, {
         status: 'accepted',
         captain: captain._id
-    })
+    });
 
+    // Get the updated ride with populated user and captain
     const ride = await rideModel.findOne({
         _id: rideId
-    }).populate('user').populate('captain').select('+otp');
+    }).populate('user').populate({
+        path: 'captain',
+        model: 'captain'
+    }).select('+otp');
 
     if (!ride) {
-        throw new Error('Ride not found');
+        throw new Error('Ride not found after update');
     }
 
     return ride;
-
 }
 
 module.exports.startRide = async ({ rideId, otp, captain }) => {
@@ -110,7 +128,10 @@ module.exports.startRide = async ({ rideId, otp, captain }) => {
 
     const ride = await rideModel.findOne({
         _id: rideId
-    }).populate('user').populate('captain').select('+otp');
+    }).populate('user').populate({
+        path: 'captain',
+        model: 'captain'
+    }).select('+otp');
 
     if (!ride) {
         throw new Error('Ride not found');
@@ -141,7 +162,10 @@ module.exports.endRide = async ({ rideId, captain }) => {
     const ride = await rideModel.findOne({
         _id: rideId,
         captain: captain._id
-    }).populate('user').populate('captain').select('+otp');
+    }).populate('user').populate({
+        path: 'captain',
+        model: 'captain'
+    }).select('+otp');
 
     if (!ride) {
         throw new Error('Ride not found');

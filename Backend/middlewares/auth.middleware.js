@@ -51,13 +51,17 @@ module.exports.authCaptain = async (req, res, next) => {
 
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        const captain = await captainModel.findById(decoded._id)
+        const captain = await captainModel.findById(decoded._id);
+        
+        if (!captain) {
+            console.error("Captain not found with ID:", decoded._id);
+            return res.status(401).json({ message: 'Captain not found' });
+        }
+        
         req.captain = captain;
-
-        return next()
+        return next();
     } catch (err) {
-        console.log(err);
-
-        res.status(401).json({ message: 'Unauthorized' });
+        console.error("Auth error:", err);
+        return res.status(401).json({ message: 'Unauthorized' });
     }
 }

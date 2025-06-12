@@ -10,20 +10,27 @@ const CaptainLogin = () => {
     const navigate = useNavigate();
     const submitHandler = async (e) => {
       e.preventDefault();
-      const captain = {
-        email: email,
-        password: password
-      };
+      try {
+        const captain = {
+          email: email,
+          password: password
+        };
 
-      const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/captains/login`, captain);
-      if(response.status === 200) {
+        const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/captains/login`, captain);
         const data = response.data;
-        //setCaptain(data.captain);
+        
+        // Store captain data in localStorage for persistence
+        localStorage.setItem('captain', JSON.stringify(data.captain));
         localStorage.setItem('token', data.token);
+        
         navigate('/captain-home');
+        
+        setEmail('');
+        setPassword('');
+      } catch (error) {
+        console.error("Login error:", error);
+        alert("Login failed. Please check your credentials.");
       }
-      setEmail('');
-      setPassword('');
     }
   return (
     <div className='p-7 h-screen flex flex-col justify-between'>

@@ -39,10 +39,13 @@ const RidePopUp = (props) => {
                     </div>
                 </div>
                 <div className='mt-5 w-full '>
-                    <button onClick={() => {
-                        props.setConfirmRidePopupPanel(true)
-                        props.confirmRide()
-
+                    <button onClick={async () => {
+                        try {
+                            await props.confirmRide();
+                            // The confirmRide function now handles showing the panel
+                        } catch (error) {
+                            console.error("Failed to confirm ride:", error);
+                        }
                     }} className=' bg-green-600 w-full text-white font-semibold p-2 px-10 rounded-lg'>Accept</button>
 
                     <button onClick={() => {
